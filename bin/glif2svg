@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+import os, os.path
+
+from fontTools.ufoLib import glifLib, pointPen
+from fontTools.pens.basePen import NullPen
+
+def flatten(l):
+    L = []
+    for o in l:
+        L.extend(o)
+    return L
+
+def consider_min_max(func):
+    def wrapper(self, *args, **_kwargs):
+        xs = [e for i, e in enumerate(flatten(args)) if i % 2 == 0]
+        ys = [e for i, e in enumerate(flatten(args)) if i % 2 == 1]
+
+        for i in xs:
+            if self.minx > i: self.minx = i
+            if self.maxx < i: self.maxx = i
+
+        for i in ys:
+            if self.miny > i: self.miny = i
+            if self.maxy < i: self.maxy = i
+
+        func(self, *args, **_kwargs)
+    return wrapper
+
+class SVGPathPen:
+    minx = miny = maxx = maxy = 0
+    path = str()
+
+    def extend_path(self, s):
+        self.path += s
+
+    def viewBox(self):
+        return (self.minx, self.miny, self.maxx+abs(self.minx), self.maxy+abs(self.miny))
+
+    def transform(self):
+        return "translate({} {})".format(abs(self.minx), abs(-self.maxy+abs(self.miny)))
+
+    @consider_min_max
+    def moveTo(self, pt):
+        x, y = pt
+        self.extend_path(" M {} {}".format(x, -y))
+
+    @consider_min_max
+    def lineTo(self, pt):
+        x, y = pt
+        self.extend_path(" L {} {}".format(x, -y))
+
+    @consider_min_max
+    def curveTo(self, *points):
+        if len(points) == 3:
+            x0, y0, x1, y1, x2, y2 = points[0]+points[1]+points[2]
+            self.extend_path(" C {} {} {} {} {} {}".format(x0, -y0, x1, -y1, x2, -y2))
+        elif len(points) == 2:
+            x0, y0, x1, y1 = points[0]+points[1]
+            self.extend_path(" C {} {} {} {}".format(x0, -y0, x1, -y1))
+        elif len(points) == 1:
+            x0, y0 = points[0]
+            self.extend_path(" C {} {}".format(x0, -y0))
+
+    qCurveTo = curveTo
+    
+    def closePath(self):
+        self.extend_path(" Z")
+
+    def endPath(self):
+        pass
+
+    def addComponent(self, glyphname, transformation):
+        raise NotImplementedError
+
+class Glyph:
+    pass
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    argparser = argparse.ArgumentParser(description="Convert .glif to SVG")
+    argparser.add_argument("input", type=str, help=".glif file")
+    argparser.add_argument("--output", type=str, help="SVG file; otherwise prints to stdout")
+    args = argparser.parse_args()
+
+    gliffn = args.input
+    output = args.output
+
+    glyph = Glyph()
+    sp = SVGPathPen()
+    ptsp = pointPen.PointToSegmentPen(sp)
+
+    with open(gliffn) as f:
+        glifLib.readGlyphFromString(f.read(), glyph, ptsp)
+
+    import xml.etree.ElementTree as ET
+    import plistlib
+
+    fontinfo = os.path.join(*[s.encode("utf-8") for s in [gliffn, "..", "..", "fontinfo.plist"]])
+    fontinfo = os.path.realpath(fontinfo)
+
+    if os.path.exists(fontinfo):
+        with open(fontinfo, "rb") as f:
+            plistd = plistlib.load(f)
+            sp.miny = float(plistd["descender"])
+            sp.maxy = float(plistd["ascender"])
+
+    root = ET.Element("svg")
+    root.set("viewBox", " ".join([str(i) for i in sp.viewBox()]))
+    path = ET.Element("path")
+    path.set("d", sp.path)
+    path.set("transform", sp.transform())
+    root.append(path)
+    tree = ET.ElementTree(root)
+    if output:
+        with open(output, "wb+") as f:
+            tree.write(f)
+    else:
+        print(ET.tostring(root, encoding="utf8", xml_declaration=True).decode("utf8"))
