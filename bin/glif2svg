@@ -80,7 +80,7 @@ if __name__ == "__main__":
     import sys
     argparser = argparse.ArgumentParser(description="Convert .glif to SVG")
     argparser.add_argument("input", type=str, help=".glif file")
-    argparser.add_argument("--output", type=str, help="SVG file; otherwise prints to stdout")
+    argparser.add_argument("--output", "-o", type=str, help="SVG file; otherwise prints to stdout")
     args = argparser.parse_args()
 
     gliffn = args.input
