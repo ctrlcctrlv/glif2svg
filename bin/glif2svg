@@ -53,15 +53,23 @@ class SVGPathPen:
     def curveTo(self, *points):
         if len(points) == 3:
             x0, y0, x1, y1, x2, y2 = points[0]+points[1]+points[2]
-            self.extend_path(" C {} {} {} {} {} {}".format(x0, -y0, x1, -y1, x2, -y2))
         elif len(points) == 2:
-            x0, y0, x1, y1 = points[0]+points[1]
-            self.extend_path(" C {} {} {} {}".format(x0, -y0, x1, -y1))
+            x0, y0, x1, y1, x2, y2 = points[0]+points[1]+points[0]
         elif len(points) == 1:
-            x0, y0 = points[0]
-            self.extend_path(" C {} {}".format(x0, -y0))
+            x0, y0, x1, y1, x2, y2 = points[0]+points[0]+points[0]
+        else:
+            raise ValueError("Received invalid cubic spline")
+        self.extend_path(" C {} {} {} {} {} {}".format(x0, -y0, x1, -y1, x2, -y2))
 
-    qCurveTo = curveTo
+    @consider_min_max
+    def qCurveTo(self, *points):
+        if len(points) == 2:
+            x0, y0, x1, y1 = points[0]+points[1]
+        elif len(points) == 1:
+            x0, y0, x1, y1 = points[0]+points[0]
+        else:
+            raise ValueError("Received invalid quadratic spline")
+        self.extend_path(" Q {} {} {} {}".format(x0, -y0, x1, -y1))
     
     def closePath(self):
         self.extend_path(" Z")
@@ -81,6 +89,7 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="Convert .glif to SVG")
     argparser.add_argument("input", type=str, help=".glif file")
     argparser.add_argument("--output", "-o", type=str, help="SVG file; otherwise prints to stdout")
+    argparser.add_argument("--no-transform", "-T", action="store_true", help="Don't output transform")
     args = argparser.parse_args()
 
     gliffn = args.input
@@ -111,7 +120,8 @@ if __name__ == "__main__":
     root.set("xmlns", "http://www.w3.org/2000/svg")
     path = ET.Element("path")
     path.set("d", sp.path)
-    path.set("transform", sp.transform())
+    if not args.no_transform:
+        path.set("transform", sp.transform())
     root.append(path)
     tree = ET.ElementTree(root)
     if output:

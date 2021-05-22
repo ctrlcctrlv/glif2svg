@@ -20,7 +20,7 @@ config = {
     'description': 'Convert UFO .glif files to SVG',
     'long_description': open('README.md', 'r').read(),
     'license': 'MIT',
-    'version': '1.0.3',
+    'version': '1.1.0',
     'install_requires': install_requires,
     'classifiers': [
         "Programming Language :: Python",
