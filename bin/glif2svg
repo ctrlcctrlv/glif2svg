@@ -37,7 +37,7 @@ class SVGPathPen:
         return (self.minx, self.miny, self.maxx+abs(self.minx), self.maxy+abs(self.miny))
 
     def transform(self):
-        return "translate({} {})".format(abs(self.minx), abs(-self.maxy+abs(self.miny)))
+        return "translate({} {})".format(0, abs(-self.maxy)-abs(self.miny))
 
     @consider_min_max
     def moveTo(self, pt):
@@ -81,7 +81,7 @@ class SVGPathPen:
         raise NotImplementedError
 
 class Glyph:
-    pass
+    width = 0
 
 if __name__ == "__main__":
     import argparse
@@ -90,6 +90,8 @@ if __name__ == "__main__":
     argparser.add_argument("input", type=str, help=".glif file")
     argparser.add_argument("--output", "-o", type=str, help="SVG file; otherwise prints to stdout")
     argparser.add_argument("--no-transform", "-T", action="store_true", help="Don't output transform")
+    argparser.add_argument("--no-glif-width", "-W", action="store_true", help="Don't consider .glif width")
+    argparser.add_argument("--fontinfo", type=str, nargs="?", help="fontinfo.plist path")
     args = argparser.parse_args()
 
     gliffn = args.input
@@ -100,13 +102,16 @@ if __name__ == "__main__":
     ptsp = pointPen.PointToSegmentPen(sp)
 
     with open(gliffn) as f:
-        glifLib.readGlyphFromString(f.read(), glyph, ptsp)
+        glifLib.readGlyphFromString(f.read(), glyph, ptsp, validate=False)
 
     import xml.etree.ElementTree as ET
     import plistlib
 
-    fontinfo = os.path.join(*[s.encode("utf-8") for s in [gliffn, "..", "..", "fontinfo.plist"]])
-    fontinfo = os.path.realpath(fontinfo)
+    if not args.fontinfo:
+        fontinfo = os.path.join(*[s.encode("utf-8") for s in [gliffn, "..", "..", "fontinfo.plist"]])
+        fontinfo = os.path.realpath(fontinfo)
+    else:
+        fontinfo = os.path.realpath(args.fontinfo)
 
     if os.path.exists(fontinfo):
         with open(fontinfo, "rb") as f:
@@ -115,13 +120,19 @@ if __name__ == "__main__":
             sp.maxy = float(plistd["ascender"])
 
     root = ET.Element("svg")
+    if not args.no_glif_width:
+        #sp.minx = 0
+        sp.maxx = glyph.width
     root.set("viewBox", " ".join([str(i) for i in sp.viewBox()]))
     root.set("version", "1.1")
     root.set("xmlns", "http://www.w3.org/2000/svg")
     path = ET.Element("path")
     path.set("d", sp.path)
     if not args.no_transform:
-        path.set("transform", sp.transform())
+        if os.path.exists(fontinfo):
+            path.set("transform", "translate(0 {})".format(abs(sp.miny)))
+        else:
+            path.set("transform", sp.transform())
     root.append(path)
     tree = ET.ElementTree(root)
     if output:
